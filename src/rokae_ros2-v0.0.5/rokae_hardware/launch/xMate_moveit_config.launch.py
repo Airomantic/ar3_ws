@@ -12,7 +12,11 @@ from launch_ros.parameter_descriptions import ParameterValue
 _LAUNCH_DIR = Path(__file__).resolve().parent
 if str(_LAUNCH_DIR) not in sys.path:
     sys.path.insert(0, str(_LAUNCH_DIR))
-from moveit_planning_utils import load_robot_description_planning, load_yaml_file
+from moveit_planning_utils import (
+    load_robot_description_planning,
+    load_yaml_file,
+    extract_ros_parameters,
+)
 
 
 def launch_setup(context, *args, **kwargs):
@@ -92,23 +96,39 @@ def launch_setup(context, *args, **kwargs):
         default_acceleration_scaling_factor=default_acceleration_scaling,
     )
 
-    ompl_yaml = load_yaml_file(moveit_config_pkg_name, "config/ompl_planning.yaml")
+    ompl_yaml = extract_ros_parameters(
+        load_yaml_file(moveit_config_pkg_name, "config/ompl_planning.yaml")
+    )
+    # 6 款 AR 机型的 SRDF/kinematics 规划组名为 {type}_arm,而各 ompl_planning.yaml
+    # 统一写 rokae_arm;运行时把 rokae_arm 重命名为实际组名,其余机型本就是 rokae_arm。
+    planning_group = (
+        f"{robot_type}_arm"
+        if robot_type in ("AR3L", "AR3R", "AR5L", "AR5R", "AR5L08", "AR5R08")
+        else "rokae_arm"
+    )
+    if planning_group != "rokae_arm" and "rokae_arm" in ompl_yaml:
+        ompl_yaml[planning_group] = ompl_yaml.pop("rokae_arm")
+
     ompl_pipeline_config = {
-        "move_group": {
-            "planning_plugin": "ompl_interface/OMPLPlanner",
-            "request_adapters": (
-                "default_planner_request_adapters/AddTimeOptimalParameterization "
-                "default_planner_request_adapters/ResolveConstraintFrames "
-                "default_planner_request_adapters/FixWorkspaceBounds "
-                "default_planner_request_adapters/FixStartStateBounds "
-                "default_planner_request_adapters/FixStartStateCollision "
-                "default_planner_request_adapters/FixStartStatePathConstraints"
-            ),
+        "planning_pipelines": ["ompl"],
+        "default_planning_pipeline": "ompl",
+        "ompl": {
+            "planning_plugins": ["ompl_interface/OMPLPlanner"],
+            "request_adapters": [
+                "default_planning_request_adapters/ResolveConstraintFrames",
+                "default_planning_request_adapters/ValidateWorkspaceBounds",
+                "default_planning_request_adapters/CheckStartStateBounds",
+                "default_planning_request_adapters/CheckStartStateCollision",
+            ],
+            "response_adapters": [
+                "default_planning_response_adapters/AddTimeOptimalParameterization",
+                "default_planning_response_adapters/ValidateSolution",
+                "default_planning_response_adapters/DisplayMotionPath",
+            ],
             "start_state_max_bounds_error": 0.1,
-        }
+            **ompl_yaml,
+        },
     }
-    if ompl_yaml:
-        ompl_pipeline_config["move_group"].update(ompl_yaml)
 
     controllers_yaml = load_yaml_file(
         moveit_config_pkg_name, "config/simple_moveit_controllers.yaml"
