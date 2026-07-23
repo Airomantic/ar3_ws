@@ -6,7 +6,7 @@
 #include <geometry_msgs/msg/pose.hpp>
 #include <moveit_msgs/msg/robot_trajectory.hpp>
 #include <moveit/robot_trajectory/robot_trajectory.h>
-#include <moveit/trajectory_processing/iterative_time_parameterization.h>
+#include <moveit/trajectory_processing/time_optimal_trajectory_generation.hpp>
 
 #include <algorithm>
 #include <atomic>
@@ -236,7 +236,7 @@ private:
 		robot_trajectory::RobotTrajectory rt(arm.getRobotModel(), arm.getName());
 		rt.setRobotTrajectoryMsg(*arm.getCurrentState(), traj_msg);
 
-		trajectory_processing::IterativeParabolicTimeParameterization iptp;
+		trajectory_processing::TimeOptimalTrajectoryGeneration iptp;
 		const bool timed_ok = iptp.computeTimeStamps(rt, vel_scale_, acc_scale_);
 		if (!timed_ok) {
 			RCLCPP_WARN(this->get_logger(), "局部轨迹时间参数化失败");
@@ -246,7 +246,7 @@ private:
 		rt.getRobotTrajectoryMsg(traj_msg);
 
 		moveit::planning_interface::MoveGroupInterface::Plan plan;
-		plan.trajectory_ = traj_msg;
+		plan.trajectory = traj_msg;
 
 		const auto exec_result = arm.execute(plan);
 		if (exec_result != moveit::core::MoveItErrorCode::SUCCESS) {
